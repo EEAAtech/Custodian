@@ -68,17 +68,9 @@
                 };
 
                 try {
-                    const response = await fetch('/api/get_budget_report', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestBody)
-                    });
-
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`API Error: ${response.status} ${errorText}`);
-                    }
-
+                    const response = await fetch('/api/get_budget_report');
+                    if (!response.ok) throw new Error('Failed to fetch budget report.');
+                    
                     const data = await response.json();
                     renderTable(data);
 
