@@ -4,26 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Report Generator</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
-
+    <!-- jQuery CDN -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        .container { max-width: 1200px; }
+        .card-header { background-color: #0d6efd; color: white; }
+        .table-responsive { max-height: 70vh; }
+        #loader { display: none; }
+        .stat-row { font-weight: bold; }
+        .total-row { background-color: #e9ecef; }
+        .mean-row { background-color: #d1ecf1; }
+        .median-row { background-color: #d6d8db; }
+    </style>
 </head>
 <body>
 
-    <div class="container mt-4">
+    <div class="container mt-4 mb-4">
         <div class="card shadow-sm">
             <div class="card-header">
                 <h3>Budget Report Generator</h3>
             </div>
             <div class="card-body">
                 <form id="reportForm">
-                    <!-- Row 1: Budget and Amount Type -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label for="budgetName" class="form-label">BudgetName</label>
-                            <input type="text" class="form-control" id="budgetName" value="Personal" required>
+                            <label for="budgetNames" class="form-label">Budget Name(s)</label>
+                            <select id="budgetNames" class="form-select" multiple required>
+                                <option>Loading budgets...</option>
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Amount Type</label>
@@ -39,8 +49,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- Row 2: Date Range Options -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-12">
                              <label class="form-label">Date Range</label>
@@ -51,7 +59,7 @@
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="dateRangeType" id="financialYear" value="financial">
-                                    <label class="form-check-label" for="financialYear">Start of Financial Year</label>
+                                    <label class="form-check-label" for="financialYear">Start of Financial Year (Apr-Mar)</label>
                                 </div>
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="dateRangeType" id="customRange" value="custom">
@@ -60,8 +68,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- Row 3: Custom Date Pickers (Initially Hidden) -->
                     <div class="row g-3 mb-3" id="customDatePickers" style="display: none;">
                         <div class="col-md-6">
                             <label for="startDate" class="form-label">From</label>
@@ -72,32 +78,212 @@
                             <input type="date" class="form-control" id="endDate">
                         </div>
                     </div>
-
                     <button type="submit" class="btn btn-primary">Generate Report</button>
                 </form>
             </div>
         </div>
 
-        <!-- Results Section -->
         <div class="card shadow-sm mt-4">
             <div class="card-header">
                 <h4>Report Results</h4>
             </div>
             <div class="card-body">
-                <div id="loader" class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                </div>
+                <div id="loader" class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>
                 <div id="errorMessage" class="alert alert-danger" style="display: none;"></div>
-                <div id="resultsContainer" class="table-responsive">
-                    <!-- Table will be rendered here -->
-                </div>
+                <div id="resultsContainer" class="table-responsive"></div>
             </div>
         </div>
     </div>
 
-   <script src="js/app.js"></script>
+    <script>
+        // --- UTILITY FUNCTIONS ---
+        const calculateMean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        const calculateMedian = arr => {
+            if (!arr.length) return 0;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+        const formatDate = (date) => date.toISOString().split('T')[0];
 
+        // --- JQUERY SCRIPT ---
+        $(function () {
+            const $reportForm = $('#reportForm');
+            const $customDatePickers = $('#customDatePickers');
+            const $dateRangeRadios = $('input[name="dateRangeType"]');
+            const $budgetNamesSelect = $('#budgetNames');
+            
+            // --- EVENT LISTENERS ---
+            $dateRangeRadios.on('change', function () {
+                $customDatePickers.toggle(this.value === 'custom');
+            });
+
+            $reportForm.on('submit', handleFormSubmit);
+
+            // --- INITIALIZATION ---
+            function populateBudgetNames() {
+                $.ajax({
+                    url: '/api/get_budget_names',
+                    type: 'GET',
+                    success: function(budgetNames) {
+                        $budgetNamesSelect.empty();
+                        $.each(budgetNames, function(i, name) {
+                            $budgetNamesSelect.append($('<option>', {
+                                value: name,
+                                text: name
+                            }));
+                        });
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        console.error("Failed to fetch budget names:", errorThrown);
+                        $budgetNamesSelect.html('<option disabled>Error loading budgets</option>');
+                    }
+                });
+            }
+            
+            populateBudgetNames();
+
+            // --- CORE LOGIC ---
+            function handleFormSubmit(e) {
+                e.preventDefault();
+                const $loader = $('#loader');
+                const $resultsContainer = $('#resultsContainer');
+                const $errorMessage = $('#errorMessage');
+
+                $loader.show();
+                $resultsContainer.empty();
+                $errorMessage.hide();
+
+                try {
+                    const selectedBudgets = $budgetNamesSelect.val();
+                    if (!selectedBudgets || selectedBudgets.length === 0) {
+                        throw new Error("Please select at least one budget name.");
+                    }
+
+                    const { startDate, endDate } = getDateRange();
+                    const requestBody = {
+                        budgetNames: selectedBudgets.join(','),
+                        amountFlag: $('input[name="amountFlag"]:checked').val(),
+                        startDate,
+                        endDate
+                    };
+                    
+                    $.ajax({
+                        url: '/api/get_report',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify(requestBody),
+                        success: function(data) {
+                            renderTable(data);
+                        },
+                        error: function(jqXHR, textStatus, errorThrown) {
+                            const errorMsg = `API Error ${jqXHR.status}: ${jqXHR.responseText || errorThrown}`;
+                            console.error('Error generating report:', errorMsg);
+                            showError(errorMsg);
+                        },
+                        complete: function() {
+                            $loader.hide();
+                        }
+                    });
+
+                } catch (error) {
+                    showError(error.message);
+                    $loader.hide();
+                }
+            }
+
+            function getDateRange() {
+                const dateRangeType = $('input[name="dateRangeType"]:checked').val();
+                const today = new Date();
+                let startDate;
+                
+                switch (dateRangeType) {
+                    case 'calendar':
+                        startDate = new Date(today.getFullYear(), 0, 1);
+                        break;
+                    case 'financial':
+                        const year = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+                        startDate = new Date(year, 3, 1);
+                        break;
+                    case 'custom':
+                        const startValue = $('#startDate').val();
+                        const endValue = $('#endDate').val();
+                        if (!startValue || !endValue) throw new Error("Custom date range requires both a start and end date.");
+                        startDate = new Date(startValue);
+                        const endDate = new Date(endValue);
+                        if (isNaN(startDate) || isNaN(endDate) || startDate > endDate) throw new Error("Invalid custom date range.");
+                        return { startDate: formatDate(startDate), endDate: formatDate(endDate) };
+                }
+                return { startDate: formatDate(startDate), endDate: formatDate(today) };
+            }
+
+            function renderTable(data) {
+                const $resultsContainer = $('#resultsContainer');
+                if (!data || data.length === 0 || (data.length === 1 && data[0].Result)) {
+                     $resultsContainer.html(`<p class="text-center text-muted">${data[0]?.Result || 'No data found for the selected criteria.'}</p>`);
+                    return;
+                }
+
+                const $table = $('<table>').addClass('table table-striped table-hover table-bordered');
+                const monthlyData = data.filter(row => row.Month !== 'Total');
+                const totalRowData = data.find(row => row.Month === 'Total');
+                const headers = Object.keys(data[0]);
+                const categoryHeaders = headers.filter(h => h !== 'Month' && h !== 'Total');
+
+                const $thead = $('<thead>');
+                const $headerRow = $('<tr>');
+                $.each([...headers, 'Mean', 'Median'], function(i, text) {
+                    $headerRow.append($('<th>').text(text));
+                });
+                $table.append($thead.append($headerRow));
+
+                const $tbody = $('<tbody>');
+                $.each(monthlyData, function(i, rowData) {
+                    const $row = $('<tr>');
+                    const rowValues = categoryHeaders.map(h => parseFloat(rowData[h]) || 0);
+                    
+                    $.each(headers, function(j, header) {
+                        const cellValue = (typeof rowData[header] === 'number') ? rowData[header].toFixed(2) : rowData[header];
+                        $row.append($('<td>').text(cellValue));
+                    });
+
+                    $row.append(`<td>${calculateMean(rowValues).toFixed(2)}</td>`);
+                    $row.append(`<td>${calculateMedian(rowValues).toFixed(2)}</td>`);
+                    $tbody.append($row);
+                });
+                
+                if (totalRowData) {
+                    const createStatRow = (label, dataObj, cssClass, calcFn) => {
+                        const $row = $('<tr>').addClass(`stat-row ${cssClass}`).append(`<td>${label}</td>`);
+                        const allValuesForStat = [];
+                        
+                        $.each(categoryHeaders, function(i, header) {
+                            const colValues = monthlyData.map(d => parseFloat(d[header]) || 0);
+                            const stat = calcFn ? calcFn(colValues) : parseFloat(dataObj[header]) || 0;
+                            allValuesForStat.push(stat);
+                            $row.append(`<td>${stat.toFixed(2)}</td>`);
+                        });
+                        
+                        const grandTotalValues = monthlyData.flatMap(d => categoryHeaders.map(h => parseFloat(d[h]) || 0));
+                        const grandTotalStat = calcFn ? calcFn(grandTotalValues) : parseFloat(dataObj['Total']) || 0;
+                        $row.append(`<td>${grandTotalStat.toFixed(2)}</td><td>-</td><td>-</td>`);
+                        return $row;
+                    };
+                    
+                    $tbody.append(createStatRow('Total', totalRowData, 'total-row'));
+                    $tbody.append(createStatRow('Mean', {}, 'mean-row', calculateMean));
+                    $tbody.append(createStatRow('Median', {}, 'median-row', calculateMedian));
+                }
+                
+                $table.append($tbody);
+                $resultsContainer.append($table);
+            }
+            
+            function showError(message) {
+                $('#errorMessage').text(message).show();
+            }
+        });
+    </script>
 </body>
 </html>
+
