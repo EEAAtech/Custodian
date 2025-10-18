@@ -68,7 +68,7 @@
                 };
 
                 try {
-                    const response = await fetch('/api/get_report', {
+                    const response = await fetch('/api/get_budget_report', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(requestBody)
