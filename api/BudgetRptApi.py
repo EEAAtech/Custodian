@@ -28,7 +28,7 @@ def get_db_connection():
         raise
 
 # --- API Route for Budget Names ---
-@app.route(route="api/get_budget_names", methods=['GET'])
+@app.route(route="/api/get_budget_names", methods=['GET'])
 def get_budget_names(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Fetching list of budget names.')
     try:
@@ -43,7 +43,7 @@ def get_budget_names(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("An internal server error occurred.", status_code=500)
 
 # --- API Route for Report Generation ---
-@app.route(route="api/get_report", methods=['POST'])
+@app.route(route="/api/get_report", methods=['POST'])
 def get_report(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Processing a report request.')
     try:
