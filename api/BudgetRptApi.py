@@ -2,10 +2,11 @@ import logging
 import json
 import os
 import pyodbc
-import azure.functions as func
+from flask import Flask, request, jsonify
 
-# Define the function app
-app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+# --- App Setup (Flask app object is created as before) ---
+app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False
 
 # --- Database Connection and Helpers (No changes in this section) ---
 def get_db_connection():
@@ -29,48 +30,43 @@ def get_db_connection():
 
 # --- API Route for Budget Names ---
 @app.route(route="/api/get_budget_names", methods=['GET'])
-def get_budget_names(req: func.HttpRequest) -> func.HttpResponse:
+def get_budget_names():
     logging.info('Fetching list of budget names.')
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             sql_query = "SELECT DISTINCT BudgetName FROM dbo.Category WHERE BudgetName IS NOT NULL ORDER BY BudgetName;"
             cursor.execute(sql_query)
-            budget_names = [row[0] for row in cursor.fetchall()]
-        return func.HttpResponse(json.dumps(budget_names), mimetype="application/json")
+            columns = [column[0] for column in cursor.description]
+            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return jsonify(items)
     except Exception as e:
-        logging.error(f"An error occurred while fetching budget names: {e}", exc_info=True)
-        return func.HttpResponse("An internal server error occurred.", status_code=500)
+        print(f"Error fetching filtered groceries: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # --- API Route for Report Generation ---
 @app.route(route="/api/get_report", methods=['POST'])
-def get_report(req: func.HttpRequest) -> func.HttpResponse:
+def get_report():
     logging.info('Processing a report request.')
+
+    req_body = request.get_json()
+    budget_names = req_body.get('budgetNames')
+    amount_flag = req_body.get('amountFlag')
+    start_date = req_body.get('startDate')
+    end_date = req_body.get('endDate')
+
+    results = []
     try:
-        req_body = req.get_json()
-        budget_names = req_body.get('budgetNames')
-        amount_flag = req_body.get('amountFlag')
-        start_date = req_body.get('startDate')
-        end_date = req_body.get('endDate')
-
-        if not all([budget_names, amount_flag, start_date, end_date]):
-            return func.HttpResponse("Missing required parameters.", status_code=400)
-
-        results = []
         with get_db_connection() as conn:
             cursor = conn.cursor()
             params = (budget_names, amount_flag, start_date, end_date)
             sql_exec = "{CALL dbo.usp_GetMonthlyBudgetReport(?, ?, ?, ?)}"
             cursor.execute(sql_exec, params)
             columns = [column[0] for column in cursor.description]
-            for row in cursor.fetchall():
-                results.append(dict(zip(columns, row)))
-        
-        return func.HttpResponse(json.dumps(results, default=str), mimetype="application/json")
-    except ValueError as ve:
-        return func.HttpResponse(str(ve), status_code=500) # For config errors
+            items = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return jsonify(items)
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
-        return func.HttpResponse("An internal server error occurred.", status_code=500)
+        print(f"Error fetching filtered groceries: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
