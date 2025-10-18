@@ -4,10 +4,8 @@ import os
 import pyodbc
 import azure.functions as func
 
-
-# --- App Setup (Flask app object is created as before) ---
-app = Flask(__name__)
-app.config['JSON_SORT_KEYS'] = False
+# Define the function app
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # --- Database Connection and Helpers (No changes in this section) ---
 def get_db_connection():
